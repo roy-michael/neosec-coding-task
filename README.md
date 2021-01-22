@@ -3,8 +3,8 @@ Implementation of an API server for processing and reading application's access 
 
 ## Getting Stated
 ### Building
-Note that the Go (golang) sdk must be installed for building the server binary, on the build machine.
-In order to build the binary issue the following the command project directory:
+Note that the Go (golang) sdk must be installed for building the server binary, on the build machine.  
+In order to build the binary issue the following command from project directory:
 ```
 > go build
 ```
@@ -12,7 +12,7 @@ the `neosec` binary will be built in the current working directory
 
 ### Running
 The binary does not need any special dependencies for runtime, and it's default parameters can be customized with the following:
-Parameters:
+#### Parameters:
 ```
 Usage of neosec:
   -addr string
@@ -36,8 +36,8 @@ For a successful query result, the server will return a JSON formatted list of e
 The accepted query parameters are:
 * `userId` - required; the id of the user to query events for
 * `eventId` - the id of the event. the `eventId` is also used as an anchor when combined with the `limit` and `page` parameters
-* `limit` - a limit for the returned events result list size
-* `page` - used for events result list pagination. The pagination is in relation to the `eventId` anchor.  
+* `limit` - a limit for the returned events result, list size
+* `page` - used for events result list pagination and works in relation to the `eventId` anchor.  
   accepted values are positive or negative numbers
 
 #### Error Handling
@@ -69,7 +69,9 @@ The event entity captures the information required for the identification of the
 This is an example for querying events for a user with id `31b20726-b870-47ba-bbcd-372b38527c89` anchored by an event with id `9d5a1220-7fa0-4e8b-a04a-e47e630e5ef3`
  while limiting the returned result list to 5 entries and moving to the second page on the result list
 ##### Request
-`>curl "http://localhost:8888/events?userId=31b20726-b870-47ba-bbcd-372b38527c89&eventId=9d5a1220-7fa0-4e8b-a04a-e47e630e5ef3&limit=5&page=2"`
+```
+> curl "http://localhost:8888/events?userId=31b20726-b870-47ba-bbcd-372b38527c89&eventId=9d5a1220-7fa0-4e8b-a04a-e47e630e5ef3&limit=5&page=2"
+```
 ##### Response
 ```json
 [
