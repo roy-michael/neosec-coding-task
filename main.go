@@ -101,11 +101,6 @@ func (s *server) eventsHandler(writer http.ResponseWriter, request *http.Request
 		return
 	}
 
-	//if limit, err := strconv.Atoi(limitQry); err == nil {
-	//	log.Print("limiting event list ", limit, " ", limitQry)
-	//	events = events[:limit]
-	//}
-
 	writer.Header().Set("content-type", "application/json")
 	if err := json.NewEncoder(writer).Encode(&events); err != nil {
 		log.Print("error while writing response: ", err)
