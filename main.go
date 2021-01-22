@@ -11,8 +11,6 @@ import (
 	"os"
 	"sort"
 	"strconv"
-	"strings"
-	"time"
 )
 
 const (
@@ -20,40 +18,14 @@ const (
 )
 
 type (
-	inputEvent struct {
-		ID                  string    `json:"id"`
-		Timestamp           Timestamp `json:"timestamp"`
-		CallerIP            string    `json:"caller_ip"`
-		URL                 string    `json:"url"`
-		Method              string    `json:"method"`
-		CallPath            string    `json:"call_path"`
-		ServerURL           string    `json:"server_url"`
-		RequestContentType  string    `json:"request_content_type"`
-		RequestSize         int       `json:"request_size"`
-		StatusCode          int       `json:"status_code"`
-		ResponseContentType string    `json:"response_content_type"`
-		ResponseSize        int       `json:"response_size"`
-		UserID              string    `json:"user_id"`
-		ServiceName         string    `json:"service_name"`
-		EndpointPath        string    `json:"endpoint_path"`
-		AuthType            string    `json:"auth_type"`
-		EndpointID          string    `json:"endpoint_id"`
-		AttributesName      []string  `json:"attributes.name"`
-		AttributesIn        []string  `json:"attributes.in"`
-		AttributesPartOf    []string  `json:"attributes.part_of"`
-		AttributesValue     []string  `json:"attributes.value"`
-		AttributesValueType []string  `json:"attributes.value_type"`
-	}
 
 	// db holds all the read events
 	db struct {
 		userEvents map[string][]inputEvent // user id -> events sorted by timestamp
-		eventIndex map[string]int          // event id -> index in events list
+		eventIndex map[string]int          // event id -> event index, in the user event list
 	}
 
-	// Timestamp for reading and writing the event time format
-	Timestamp time.Time
-
+	// the http server to serve the `event` endpoint requests
 	server struct {
 		db  *db
 		srv *http.Server
@@ -61,62 +33,25 @@ type (
 )
 
 var addr = flag.String("addr", ":8888", "address to listen on")
+var sampleFile = flag.String("sampleFile", "testdata/events-sample.json", "sample file path")
 
-func (e inputEvent) MarshalJSON() ([]byte, error) {
-	return json.Marshal(
-		&struct {
-			ID           string    `json:"id"`
-			Timestamp    Timestamp `json:"timestamp"`
-			CallerIP     string    `json:"caller_ip"`
-			URL          string    `json:"url"`
-			Method       string    `json:"method"`
-			CallPath     string    `json:"call_path"`
-			ServerURL    string    `json:"server_url"`
-			StatusCode   int       `json:"status_code"`
-			UserID       string    `json:"user_id"`
-			ServiceName  string    `json:"service_name"`
-			EndpointPath string    `json:"endpoint_path"`
-			EndpointID   string    `json:"endpoint_id"`
-		}{
-			ID:           e.ID,
-			Timestamp:    e.Timestamp,
-			CallerIP:     e.CallerIP,
-			URL:          e.URL,
-			Method:       e.Method,
-			CallPath:     e.CallPath,
-			ServerURL:    e.ServerURL,
-			StatusCode:   e.StatusCode,
-			UserID:       e.UserID,
-			ServiceName:  e.ServiceName,
-			EndpointPath: e.EndpointPath,
-			EndpointID:   e.EndpointID,
-		})
-}
+func main() {
 
-func (t Timestamp) Before(u Timestamp) bool {
-	return time.Time(t).Before(time.Time(u))
-}
+	flag.Parse()
 
-func (t *Timestamp) UnmarshalJSON(data []byte) error {
+	log.Print("starting server. listening on ", *addr)
 
-	// assuming dates are in UTC without a TZ
-	ts, err := time.Parse(timeFormat, strings.Trim(string(data), "\""))
+	events, err := readEventFile(*sampleFile)
 	if err != nil {
-		return err
+		panic(err)
 	}
-	*t = Timestamp(ts)
 
-	return nil
+	srv := newServer(*addr, prepareDb(events))
+
+	log.Fatal(srv.ListenAndServe())
 }
 
-func (t Timestamp) String() string {
-	return time.Time(t).String()
-}
-
-func (t Timestamp) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Time(t))
-}
-
+// server initialization
 func newServer(addr string, db *db) *server {
 	mux := http.NewServeMux()
 
@@ -133,32 +68,17 @@ func newServer(addr string, db *db) *server {
 	return &s
 }
 
+// start server, listening for requests
 func (s *server) ListenAndServe() error {
 	return s.srv.ListenAndServe()
 }
 
-func main() {
-
-	flag.Parse()
-
-	log.Print("starting server. listening on ", *addr)
-	var filename string = "testdata/events-sample.json"
-
-	events, err := readEventFile(filename)
-	if err != nil {
-		panic(err)
-	}
-
-	srv := newServer(*addr, prepareDb(events))
-
-	log.Fatal(srv.ListenAndServe())
-}
-
+//the handler for processing the `events` endpoint requests
 func (s *server) eventsHandler(writer http.ResponseWriter, request *http.Request) {
 
 	if request.Method != http.MethodGet {
 		log.Printf("method not allowed: %v", request.Method)
-		http.Error(writer, "no user id was provided", http.StatusMethodNotAllowed)
+		http.Error(writer, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -174,8 +94,6 @@ func (s *server) eventsHandler(writer http.ResponseWriter, request *http.Request
 		return
 	}
 
-	log.Print("params:", eventId, userId)
-
 	events, err := s.getEventList(userId, eventId, limit, page)
 	if err != nil {
 		log.Printf("error while processing event list: %v", err)
@@ -188,9 +106,6 @@ func (s *server) eventsHandler(writer http.ResponseWriter, request *http.Request
 	//	events = events[:limit]
 	//}
 
-	//for _, evs := range events {
-	//	fmt.Fprintf(writer, "%s: %+v<br>\n", evs.ID, evs.Timestamp)
-	//}
 	writer.Header().Set("content-type", "application/json")
 	if err := json.NewEncoder(writer).Encode(&events); err != nil {
 		log.Print("error while writing response: ", err)
@@ -200,6 +115,9 @@ func (s *server) eventsHandler(writer http.ResponseWriter, request *http.Request
 
 // reading the json file from disk and unmarshalling into an inputEvent list
 func readEventFile(name string) ([]inputEvent, error) {
+
+	log.Print("reading sample file ", name)
+
 	file, err := os.Open(name)
 	if err != nil {
 		return nil, err
@@ -224,7 +142,7 @@ func readEventFile(name string) ([]inputEvent, error) {
 	return events, nil
 }
 
-//preparing the userEvent and lists and the event index map
+//preparing the userEvent, event lists and the event index map
 func prepareDb(events []inputEvent) *db {
 
 	userEvents := make(map[string][]inputEvent)
