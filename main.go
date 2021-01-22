@@ -13,10 +13,6 @@ import (
 	"strconv"
 )
 
-const (
-	timeFormat = "2006-01-02 15:04:05.000"
-)
-
 type (
 
 	// db holds all the read events

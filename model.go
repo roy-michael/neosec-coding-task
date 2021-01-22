@@ -7,12 +7,16 @@ import (
 	"time"
 )
 
+const (
+	timeFormat = "2006-01-02 15:04:05.000"
+)
+
 type (
 
 	// Timestamp for reading and writing the event time format
 	Timestamp time.Time
 
-	// the event is used
+	// event is used as the response payload
 	event struct {
 		ID           string    `json:"id"`
 		Timestamp    Timestamp `json:"timestamp"`
@@ -28,6 +32,7 @@ type (
 		EndpointID   string    `json:"endpoint_id"`
 	}
 
+	// inputEvent used for reading the input file
 	inputEvent struct {
 		event
 		RequestContentType  string   `json:"request_content_type"`
