@@ -13,7 +13,7 @@ const (
 
 type (
 
-	// Timestamp for reading and writing the event time format
+	// Timestamp for reading and writing the sample event time format
 	Timestamp time.Time
 
 	// event is used as the response payload
@@ -69,11 +69,11 @@ func (t *Timestamp) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (t Timestamp) String() string {
-	return time.Time(t).String()
-}
-
 func (t Timestamp) MarshalJSON() ([]byte, error) {
 	b := make([]byte, 0, len(timeFormat))
 	return []byte(fmt.Sprintf(`"%s"`, time.Time(t).AppendFormat(b, timeFormat))), nil
+}
+
+func (t Timestamp) String() string {
+	return time.Time(t).String()
 }

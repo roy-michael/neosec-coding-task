@@ -17,8 +17,8 @@ type (
 
 	// db holds all the read events
 	db struct {
-		userEvents map[string][]inputEvent // user id -> events sorted by timestamp
-		eventIndex map[string]int          // event id -> event index, in the user event list
+		userEvents map[string][]inputEvent // user id -> events; sorted by timestamp
+		eventIndex map[string]int          // event id -> event index; in the user event list
 	}
 
 	// the http server to serve the `event` endpoint requests
@@ -28,8 +28,10 @@ type (
 	}
 )
 
-var addr = flag.String("addr", ":8888", "address to listen on")
-var sampleFile = flag.String("sampleFile", "testdata/events-sample.json", "sample file path")
+var (
+	addr       = flag.String("addr", ":8888", "address to listen on")
+	sampleFile = flag.String("sampleFile", "testdata/events-sample.json", "sample file path")
+)
 
 func main() {
 
@@ -104,6 +106,49 @@ func (s *server) eventsHandler(writer http.ResponseWriter, request *http.Request
 	}
 }
 
+// reading events from the user event list, according to requirements
+func (s *server) getEventList(userId, eventId, limitStr, pageStr string) ([]inputEvent, error) {
+
+	log.Printf("reading event list. user %s, event %s, limit: %s, page: %s", userId, eventId, limitStr, pageStr)
+	events, ok := s.db.userEvents[userId]
+	if !ok {
+		return nil, fmt.Errorf("cannot find user events for %s", userId)
+	}
+
+	log.Printf("found %d events in for user %s", len(events), userId)
+
+	start, end := 0, len(events)
+	if eventId != "" {
+		index := 0
+		log.Printf("looking for event index in timeline list %s", eventId)
+
+		if index, ok = s.db.eventIndex[eventId]; !ok {
+			return nil, fmt.Errorf("cannot find index for event: %s", eventId)
+		}
+
+		log.Printf("found index for event: %s, %d", eventId, index)
+		start = index
+		end = index + 1
+	}
+
+	limit, err := strconv.Atoi(limitStr)
+	if err == nil {
+		start = int(math.Max(0, float64(start-limit/2)))
+		end = int(math.Min(float64(len(events)), float64(start+limit)))
+
+		log.Printf("using start and end indexes: %d, %d", start, end)
+
+		// reading some more from the bottom in case the end is last element in list
+		if delta := end - start; delta < limit {
+			start = int(math.Max(0, float64(start-(limit-delta))))
+		}
+	}
+
+	start, end = paginate(start, end, limit, len(events), pageStr)
+
+	return events[start:end], nil
+}
+
 // reading the json file from disk and unmarshalling into an inputEvent list
 func readEventFile(name string) ([]inputEvent, error) {
 
@@ -168,53 +213,9 @@ func prepareDb(events []inputEvent) *db {
 	}
 }
 
-// reading events from the user event list, according to requirements
-func (s *server) getEventList(userId, eventId, limitStr, pageStr string) ([]inputEvent, error) {
-
-	log.Printf("reading event list. user %s, event %s, limit: %s, page: %s", userId, eventId, limitStr, pageStr)
-	events, ok := s.db.userEvents[userId]
-	if !ok {
-		return nil, fmt.Errorf("cannot find user events for %s", userId)
-	}
-
-	log.Printf("found %d events in for user %s", len(events), userId)
-
-	start, end := 0, len(events)
-	if eventId != "" {
-		index := 0
-		log.Printf("looking for event index in timeline list %s", eventId)
-
-		if index, ok = s.db.eventIndex[eventId]; !ok {
-			return nil, fmt.Errorf("cannot find index for event: %s", eventId)
-		}
-
-		log.Printf("found index for event: %s, %d", eventId, index)
-		start = index
-		end = index + 1
-	}
-
-	limit, err := strconv.Atoi(limitStr)
-	if err == nil {
-		start = int(math.Max(0, float64(start-limit/2)))
-		end = int(math.Min(float64(len(events)), float64(start+limit)))
-
-		log.Printf("using start and end indexes: %d, %d", start, end)
-
-		// reading some more from the bottom in case the end is last element in list
-		if delta := end - start; delta < limit {
-			start = int(math.Max(0, float64(start-(limit-delta))))
-		}
-	}
-
-	start, end = paginate(start, end, limit, len(events), pageStr)
-
-	return events[start:end], nil
-}
-
+// calculate the list's start and end indexes based on the page number
 func paginate(start, end, limit, max int, pageStr string) (int, int) {
-
-	page, err := strconv.Atoi(pageStr)
-	if err == nil {
+	if page, err := strconv.Atoi(pageStr); err == nil {
 		offset := page * limit
 		start = int(math.Min(math.Max(0, float64(start+offset)), float64(max))) //make sure it is within boundaries
 		end = int(math.Max(math.Min(float64(max), float64(end+offset)), float64(0)))
